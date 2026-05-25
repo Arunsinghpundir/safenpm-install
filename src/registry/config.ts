@@ -1,8 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import pacote from 'pacote';
-import type { PacoteOptions, RegistryConfig } from './types.js';
-import { isBlockedError } from './errors.js';
+import type { PacoteOptions, RegistryConfig } from '../types.js';
 
 const DEFAULT_REGISTRY = 'https://registry.npmjs.org/';
 
@@ -23,7 +21,7 @@ export async function loadRegistryConfig(cwd: string): Promise<RegistryConfig> {
       const content = await fs.readFile(npmrcPath, 'utf8');
       parseNpmrc(content, config);
     } catch {
-      // .npmrc is optional
+      // optional
     }
   }
 
@@ -90,7 +88,8 @@ export function buildPacoteOptions(
   overrideRegistry?: string,
 ): PacoteOptions {
   const registry = getRegistryForPackage(packageName, config, overrideRegistry);
-  const token = config.authTokens.get(registry.replace(/\/$/, '')) ??
+  const token =
+    config.authTokens.get(registry.replace(/\/$/, '')) ??
     config.authTokens.get(registry);
 
   return {
@@ -106,45 +105,14 @@ export function normalizeRegistryUrl(url: string): string {
   return trimmed.endsWith('/') ? trimmed : `${trimmed}/`;
 }
 
-export async function fetchPackument(
-  packageName: string,
-  opts: PacoteOptions,
-): Promise<{ versions: Record<string, unknown> }> {
-  return pacote.packument(packageName, opts) as Promise<{
-    versions: Record<string, unknown>;
-  }>;
+export function packumentCacheKey(packageName: string, registry: string): string {
+  return `${registry}::${packageName}`;
 }
 
-export async function validateManifest(
+export function accessibilityCacheKey(
   packageName: string,
   version: string,
-  opts: PacoteOptions,
-): Promise<unknown> {
-  const spec = `${packageName}@${version}`;
-  return pacote.manifest(spec, opts);
-}
-
-export async function isVersionAccessible(
-  packageName: string,
-  version: string,
-  opts: PacoteOptions,
-): Promise<{ accessible: boolean; blocked: boolean; error?: string }> {
-  try {
-    await validateManifest(packageName, version, opts);
-    return { accessible: true, blocked: false };
-  } catch (error) {
-    if (isBlockedError(error)) {
-      return {
-        accessible: false,
-        blocked: true,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-
-    return {
-      accessible: false,
-      blocked: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  registry: string,
+): string {
+  return `${registry}::${packageName}@${version}`;
 }

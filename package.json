@@ -1,10 +1,10 @@
 {
-  "name": "safe-npm",
-  "version": "0.1.0",
-  "description": "CLI wrapper around npm that auto-fallbacks when registry blocks package versions",
+  "name": "safenpm",
+  "version": "0.2.0",
+  "description": "Enterprise-safe npm wrapper with parallel registry validation and auto-fallback",
   "type": "module",
   "bin": {
-    "safe-npm": "./dist/cli.js"
+    "safenpm": "./dist/cli.js"
   },
   "files": [
     "dist"
@@ -32,6 +32,7 @@
     "commander": "^13.1.0",
     "execa": "^9.5.2",
     "ora": "^8.2.0",
+    "p-limit": "^6.2.0",
     "pacote": "^21.0.0",
     "semver": "^7.7.1"
   },

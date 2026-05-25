@@ -1,7 +1,8 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { Logger } from './logger.js';
-import { readPackageJson } from './resolver.js';
+import type { Logger } from '../utils/logger.js';
+import { readPackageJson } from './packageJson.js';
+
 export async function applyOverrides(
   cwd: string,
   overrides: Record<string, string>,

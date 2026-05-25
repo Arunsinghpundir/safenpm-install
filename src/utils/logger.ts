@@ -1,10 +1,17 @@
 import chalk from 'chalk';
 import ora, { type Ora } from 'ora';
-
-export type LogLevel = 'info' | 'success' | 'warn' | 'error' | 'debug';
+import type { WorkerStats } from '../types.js';
 
 export class Logger {
   private spinner: Ora | null = null;
+  private stats: WorkerStats = {
+    activeWorkers: 0,
+    queueSize: 0,
+    completedTasks: 0,
+    failedTasks: 0,
+    resolvedPackages: 0,
+    concurrency: 0,
+  };
 
   constructor(private readonly verbose = false) {}
 
@@ -32,6 +39,29 @@ export class Logger {
     if (this.verbose) {
       console.log(chalk.gray('›'), chalk.dim(message));
     }
+  }
+
+  worker(message: string): void {
+    if (this.verbose) {
+      console.log(chalk.cyan('[Worker]'), message);
+    }
+  }
+
+  workerEvent(workerId: number, message: string): void {
+    console.log(chalk.magenta(`[Worker-${workerId}]`), message);
+  }
+
+  updateStats(partial: Partial<WorkerStats>): void {
+    this.stats = { ...this.stats, ...partial };
+  }
+
+  printStats(): void {
+    if (!this.verbose) return;
+    const s = this.stats;
+    this.debug(
+      `Stats: workers=${s.activeWorkers} queue=${s.queueSize} done=${s.completedTasks} ` +
+        `failed=${s.failedTasks} resolved=${s.resolvedPackages} concurrency=${s.concurrency}`,
+    );
   }
 
   startSpinner(text: string): Ora {

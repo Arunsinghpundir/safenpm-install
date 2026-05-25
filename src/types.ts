@@ -43,11 +43,25 @@ export interface FallbackResult {
   resolvedVersion: string;
   attempts: VersionAttempt[];
   usedFallback: boolean;
+  durationMs?: number;
 }
 
 export interface ResolutionPlan {
   results: FallbackResult[];
   overrides: Record<string, string>;
+  stats: ResolutionStats;
+}
+
+export interface ResolutionStats {
+  totalPackages: number;
+  resolved: number;
+  failed: number;
+  fallbacks: number;
+  durationMs: number;
+  workersUsed: number;
+  concurrency: number;
+  cacheHits: number;
+  cacheMisses: number;
 }
 
 export interface InstallOptions {
@@ -57,23 +71,69 @@ export interface InstallOptions {
   verbose?: boolean;
 }
 
+export type CorePreset = '32' | '64' | 'all' | 'max' | 'default';
+
+export interface ConcurrencyConfig {
+  logicalCores: number;
+  workerCount: number;
+  ioConcurrency: number;
+  adaptive: boolean;
+  preset?: CorePreset;
+}
+
 export interface CliOptions {
   cwd: string;
   dryRun: boolean;
   verbose: boolean;
   registry?: string;
   skipInstall: boolean;
+  concurrency: ConcurrencyConfig;
+  noParallel?: boolean;
 }
-
-export type BlockedErrorCode =
-  | 'E403'
-  | 'E404'
-  | 'FORBIDDEN'
-  | 'UNAVAILABLE'
-  | 'BLOCKED';
 
 export interface SafeNpmError extends Error {
   code?: string;
   statusCode?: number;
   packageName?: string;
+}
+
+export interface WorkerStats {
+  activeWorkers: number;
+  queueSize: number;
+  completedTasks: number;
+  failedTasks: number;
+  resolvedPackages: number;
+  concurrency: number;
+}
+
+export interface BenchmarkResult {
+  registryValidationMs: number;
+  dependencyResolutionMs: number;
+  fallbackRecoveryMs: number;
+  npmInstallMs: number;
+  safenpmTotalMs: number;
+  packagesChecked: number;
+  fallbacksApplied: number;
+  workersUsed: number;
+  cacheHitRate: number;
+}
+
+export interface ValidateVersionTask {
+  packageName: string;
+  version: string;
+  pacoteOpts: PacoteOptions;
+}
+
+export interface WorkerTaskMessage {
+  type: 'filter-versions';
+  id: string;
+  versions: string[];
+  range: string;
+}
+
+export interface WorkerResultMessage {
+  type: 'filter-versions-result';
+  id: string;
+  candidates: string[];
+  error?: string;
 }

@@ -1,16 +1,8 @@
-# safe-npm
+# safenpm
 
-Enterprise-safe npm wrapper that detects registry-blocked package versions (403 / quarantine / unavailable) and automatically falls back to the latest accessible version, persisting fixes via `package.json` overrides.
+Enterprise-safe npm wrapper with **parallel registry validation**, intelligent fallback when versions are blocked, and high-performance multicore orchestration.
 
-## Problem
-
-Private npm proxies (JFrog Artifactory, Sonatype Nexus) often block or delay newly published versions. That leads to:
-
-- `npm install` failing with **403 Forbidden**
-- Broken CI/CD pipelines
-- Manual downgrades and override edits
-
-**safe-npm** automates detection and fallback so installs succeed without manual intervention.
+Works on **Windows**, **Linux**, **macOS**, and **GitHub Actions** — no platform-specific shell commands.
 
 ## Install
 
@@ -20,112 +12,102 @@ npm run build
 npm link
 ```
 
-## Usage
+## Commands
 
 ```bash
-safe-npm install
-safe-npm install --dry-run
-safe-npm install --verbose
-safe-npm install --registry https://artifactory.example.com/artifactory/api/npm/npm-virtual/
-safe-npm install --legacy-peer-deps
+safenpm install
+safenpm install --32-core
+safenpm install --64-core
+safenpm install --all-core
+safenpm install --max-core
+safenpm install --workers=16
+safenpm install --verbose
+safenpm install --dry-run
+safenpm benchmark
 ```
 
-### Example flow
+## Parallel engine
 
-**Input** (`package.json`):
+`safenpm` adds a smart orchestration layer **above** npm (does not replace npm internals):
 
-```json
-{
-  "dependencies": {
-    "lodash": "^5.0.0"
-  }
-}
-```
+| Phase | Parallelism |
+|-------|-------------|
+| Packument fetch | Deduped cache + concurrent I/O |
+| Semver filtering | `worker_threads` pool (large version lists) |
+| Manifest / accessibility | Adaptive `p-limit` concurrency |
+| Fallback discovery | Batched parallel version probes per package |
+| Install | Delegated to `npm install` |
 
-**Scenario:** `5.0.2` and `5.0.1` blocked, `5.0.0` accessible.
-
-**Output:**
+### Example output
 
 ```
-✔ Reading dependencies
-✔ Resolving versions
-⚠ lodash@5.0.2 blocked by registry
-⚠ lodash@5.0.1 blocked by registry
-✔ Falling back to lodash@5.0.0
+✔ Detected 32 logical cores
+✔ Starting 24 workers
+✔ Parallel registry validation enabled
+✔ Adaptive concurrency enabled
+
+[Worker-1] react@19.2.0 blocked
+[Worker-2] lodash@5.0.2 blocked
+[Worker-3] next@16.0.0 accessible
+
+✔ Fallback resolved for react → 19.0.0
+✔ Fallback resolved for lodash → 5.0.1
 ✔ Writing overrides
-✔ Running npm install
-```
-
-**Result** (`package.json`):
-
-```json
-{
-  "overrides": {
-    "lodash": "5.0.0"
-  }
-}
+✔ Running npm install (12.4s)
+✔ Installation completed in 12.4s
 ```
 
 ## Architecture
 
 ```
 src/
-├── cli.ts         # Commander entrypoint, orchestration
-├── resolver.ts    # package.json I/O, dependency extraction, plan building
-├── registry.ts    # .npmrc parsing, pacote metadata/manifest validation
-├── fallback.ts    # Version candidate sorting + blocked-version fallback
-├── overrides.ts   # Merge and persist overrides to package.json
-├── installer.ts   # npm install execution (execa)
-├── logger.ts      # chalk + ora logging
-├── errors.ts      # Blocked/network error classification
-└── types.ts       # Shared TypeScript contracts
+├── cli.ts
+├── installer.ts
+├── types.ts
+├── parallel/
+│   ├── cpuDetector.ts      # Core detection + safe limits
+│   ├── concurrency.ts      # Adaptive p-limit controller
+│   ├── taskQueue.ts        # Priority async queue
+│   ├── workerPool.ts       # worker_threads pool
+│   ├── worker.ts           # CPU semver filtering
+│   └── scheduler.ts        # Parallel package orchestration
+├── resolver/
+│   ├── packageJson.ts
+│   ├── fallback.ts         # Batched parallel version probes
+│   ├── parallelResolver.ts
+│   └── overrides.ts
+├── registry/
+│   ├── config.ts           # .npmrc parsing
+│   ├── client.ts           # pacote + retry
+│   └── cache.ts            # Packument + accessibility cache
+├── benchmark/
+│   └── benchmark.ts
+└── utils/
+    ├── errors.ts
+    ├── logger.ts
+    └── retry.ts              # Exponential backoff
 ```
 
-### Fallback algorithm
+## Features
 
-1. Read `dependencies` and `devDependencies` from `package.json`
-2. For each package, fetch packument metadata via **pacote**
-3. Filter versions satisfying the semver range
-4. Sort candidates **descending** (newest first)
-5. Validate each version with `pacote.manifest()` until one succeeds
-6. On **403 / E403 / Forbidden / unavailable**, try the next lower version
-7. Collect packages that required fallback into `overrides`
-8. Run `npm install`
+- **Adaptive concurrency** — throttles on slow network or high memory use
+- **Registry cache** — avoids duplicate packument/manifest calls
+- **Retry engine** — exponential backoff for transient errors; immediate skip on 403
+- **Memory safety** — worker cap from free RAM, max 64 workers
+- **Cross-platform** — Node.js only, no bash/PowerShell-specific commands
 
-### Registry support
+## Benchmark
 
-- Reads project `.npmrc` and user `~/.npmrc`
-- Honors `registry` and `@scope:registry`
-- Supports `_authToken` for private registries
-- Respects `npm_config_registry` environment variable
+```bash
+safenpm benchmark
+safenpm benchmark --skip-npm-install
+```
 
-## Error handling
-
-| Error type | Behavior |
-|------------|----------|
-| 403 / Forbidden / blocked | Warn, try next lower version |
-| Network (ETIMEDOUT, ENOTFOUND) | Fail fast with clear message |
-| No satisfying versions | Fail with semver context |
-| All candidates blocked | Fail with summary |
+Reports registry validation time, resolution time, fallback recovery, npm install duration, cache hit rate, and worker count.
 
 ## Future extensions
 
-Designed for later additions without rewriting core flows:
-
-- `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml` patching
-- CI mode (`--ci`)
-- Shared validation cache
-- Parallel version probes
-- Artifactory-specific API optimizations
-- Optional Rust backend
-
-## Development
-
-```bash
-npm run build
-npm run lint
-node dist/cli.js install --dry-run --verbose
-```
+Designed for: Rust workers, distributed cache, monorepo scheduling, lockfile patching (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`), CI mode, enterprise dashboards.
 
 ## License
 

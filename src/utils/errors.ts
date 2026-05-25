@@ -1,4 +1,4 @@
-import type { SafeNpmError } from './types.js';
+import type { SafeNpmError } from '../types.js';
 
 const BLOCKED_PATTERNS = [
   /\b403\b/i,
@@ -35,8 +35,17 @@ export function isNetworkError(error: unknown): boolean {
     code === 'ETIMEDOUT' ||
     code === 'ENOTFOUND' ||
     code === 'EAI_AGAIN' ||
-    code === 'ECONNREFUSED'
+    code === 'ECONNREFUSED' ||
+    code === 'EPIPE'
   );
+}
+
+export function isTransientError(error: unknown): boolean {
+  if (isNetworkError(error)) return true;
+  if (!error || typeof error !== 'object') return false;
+  const err = error as SafeNpmError;
+  const status = err.statusCode ?? (err as { status?: number }).status;
+  return status === 429 || status === 502 || status === 503 || status === 504;
 }
 
 export function formatError(error: unknown): string {
